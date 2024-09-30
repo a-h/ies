@@ -14,10 +14,16 @@ import (
 var (
 	flagAttributeFilter = flag.String("filter", "all", "filter to apply to the top level attributes, choose from [all, attributes, relationships, types]")
 	flagMaxDepth        = flag.Int("depth", math.MaxInt, "maximum depth to display, default is math.MaxInt")
+	flagHelp            = flag.Bool("help", false, "display this help message")
 )
 
 func main() {
 	flag.Parse()
+
+	if *flagHelp {
+		flag.PrintDefaults()
+		os.Exit(0)
+	}
 
 	include, ok := attributeFilters[*flagAttributeFilter]
 	if !ok {
