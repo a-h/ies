@@ -2,15 +2,30 @@ package main
 
 import (
 	"bufio"
+	"flag"
 	"fmt"
 	"maps"
+	"math"
 	"os"
 	"slices"
 	"strings"
 )
 
+var (
+	flagAttributeFilter = flag.String("filter", "all", "filter to apply to the top level attributes, choose from [all, attributes, relationships, types]")
+	flagMaxDepth        = flag.Int("depth", math.MaxInt, "maximum depth to display, default is math.MaxInt")
+)
+
 func main() {
-	err := run()
+	flag.Parse()
+
+	include, ok := attributeFilters[*flagAttributeFilter]
+	if !ok {
+		fmt.Printf("unknown filter %q\n", *flagAttributeFilter)
+		os.Exit(1)
+	}
+
+	err := run(include, *flagMaxDepth)
 	if err != nil {
 		fmt.Println(err)
 		os.Exit(1)
@@ -72,7 +87,7 @@ func (s *Set[T]) Contains(value T) bool {
 	return false
 }
 
-func run() (err error) {
+func run(include func(*RDFItem) bool, maxDepth int) (err error) {
 	f, err := os.Open("ies.rdf")
 	if err != nil {
 		return fmt.Errorf("failed to open file: %w", err)
@@ -147,24 +162,36 @@ func run() (err error) {
 	var roots []*RDFItem
 	for _, key := range slices.Sorted(maps.Keys(subjectToItem)) {
 		item := subjectToItem[key]
-		if item.Parents.Len() == 0 {
+		if item.Parents.Len() == 0 && include(item) {
 			roots = append(roots, item)
 		}
 	}
 
 	for _, root := range roots {
-		display(root, subjectToItem, 0)
+		display(root, subjectToItem, 0, maxDepth)
 	}
 
 	return nil
 }
 
-func display(item *RDFItem, subjectToItem map[string]*RDFItem, indent int) {
-	fmt.Printf("%s%s\n", strings.Repeat(" ", indent), item.Subject)
+var attributeFilters = map[string]func(item *RDFItem) (include bool){
+	"attributes":    func(item *RDFItem) bool { return item.Subject == "ies:attribute" },
+	"relationships": func(item *RDFItem) bool { return item.Subject == "ies:relationship" },
+	"types": func(item *RDFItem) bool {
+		return item.Subject == "rdf:type" || item.Subject == "rdfs:Class" || item.Subject == "rdfs:Resource"
+	},
+	"all": func(item *RDFItem) bool { return true },
+}
+
+func display(item *RDFItem, subjectToItem map[string]*RDFItem, indent, maxdepth int) {
+	if indent > maxdepth {
+		return
+	}
+	fmt.Printf("%s%s\n", strings.Repeat(" ", indent*2), item.Subject)
 	sortedChildren := item.Children.Values()
 	slices.Sort(sortedChildren)
 	for _, child := range sortedChildren {
-		display(subjectToItem[child], subjectToItem, indent+2)
+		display(subjectToItem[child], subjectToItem, indent+1, maxdepth)
 	}
 }
 
